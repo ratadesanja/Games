@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch",
+            "type": "cppdbg",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "externalConsole": true,
+            "program": "${workspaceFolder}/${fileBasenameNoExtension}.exe",
+            "args": ["-arg1", "-arg2"],
+            "preLaunchTask": "C/C++: g++.exe build active file"
+        }
+    ]
+}

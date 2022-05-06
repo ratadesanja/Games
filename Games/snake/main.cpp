@@ -4,46 +4,185 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include<Windows.h>
+
 using namespace std;
 
-const int exponent = 6;
-const int screenW = pow(2, exponent);
+const int screenW = 64;
 const int screenH = screenW / 2;
+
+const char playerHeadChar = 'O';
+const char playerBodyChar = 'o';
+
+const char wallChar = '#';
+const char appleChar = 'x';
+const char airChar = ' ';
+
+
+class Console
+{
+    public:
+        HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        void ShowConsoleCursor(bool showFlag)
+        {
+
+        CONSOLE_CURSOR_INFO     cursorInfo;
+
+        GetConsoleCursorInfo(handle, &cursorInfo);
+        cursorInfo.bVisible = showFlag; // set the cursor visibility
+        SetConsoleCursorInfo(handle, &cursorInfo);
+        }
+
+        void setCursorPosition(int x, int y)
+        {
+            COORD Position;
+
+
+            Position.X = x;
+            Position.Y = y;
+            SetConsoleCursorPosition(handle, Position);
+        }
+
+        void setColor(int color)
+        {
+            switch (color)
+            {
+                case 0: 
+                    SetConsoleTextAttribute(handle, 15);
+                    break;
+
+                case 1:
+                    SetConsoleTextAttribute(handle, 9);
+                    break;
+
+                case 2:
+                    SetConsoleTextAttribute(handle, 10);
+                    break;
+
+                case 3:
+                    SetConsoleTextAttribute(handle, 4);
+                    break;
+            } 
+        }
+
+        void setFullscreen()
+        {
+            HWND hwnd = GetConsoleWindow();
+            SetWindowLong(hwnd, GWL_STYLE, WS_POPUP);
+
+            CONSOLE_SCREEN_BUFFER_INFO screenBufferInfo; 
+            GetConsoleScreenBufferInfo(handle, &screenBufferInfo);
+
+            COORD new_screen_buffer_size;
+            new_screen_buffer_size.X = screenBufferInfo.srWindow.Right - screenBufferInfo.srWindow.Left + 1;
+            new_screen_buffer_size.Y = screenBufferInfo.srWindow.Bottom - screenBufferInfo.srWindow.Top + 1;
+
+            SetConsoleScreenBufferSize(handle, new_screen_buffer_size);
+
+            system("mode 650");
+            ShowWindow(hwnd, SW_MAXIMIZE);
+        }
+};
+
 
 class MapClass
 {
     public:
-        void initMap();
-        void drawScreen();
+        char array[screenW][screenH];
 
-
-        void initMap(char screen[screenW][screenH])
+        void modifyArray(int x, int y, char c)
         {
-            cout << "InitMap\n";
+            array[x][y] = c;
+        }
+
+        char getArray(int x, int y)
+        {
+            return array[x][y];
+        }
+
+        int getColor(char c)
+        {
+            switch (c)
+            { 
+                case wallChar:
+                    return 0;
+                    break;
+
+                case airChar:
+                    return 0;
+                    break;
+
+                case playerHeadChar:
+                    return 1;
+                    break;
+
+                case playerBodyChar:
+                    return 2;
+                    break;
+
+                case appleChar:
+                    return 3;
+                    break;
+            }
+        }
+
+        void initMap()
+        {
+            //cout << "InitMap\n";
+            char c;
             for(int i = 0; i < screenH; i++)
             {
                 for(int j = 0; j < screenW; j++)
                 {
                     if(i == 0 || i == screenH - 1 || j == 0 || j == screenW - 1)
-                        screen[j][i] = '#';
+                    {
+                        c = wallChar;
+                        modifyArray(j, i, c);
+                    }
                     else
-                        screen[j][i] = ' ';
+                    {
+                        c = airChar;
+                        modifyArray(j, i, c);
+                    }
                 }
             }
         }
 
-
-        void drawScreen(char screen[screenW][screenH])
+        void drawScreen(Console& console)
         {
-            for(int i = 0; i < screenH; i++)
+            for(int y = 0; y < screenH; y++)
             {
-                for(int j = 0; j < screenW; j++)
+                for(int x = 0; x < screenW; x++)
                 {
-                    cout << screen[j][i];
+                    console.setColor(getColor(array[x][y]));
+                    cout << array[x][y] << flush;
+                    shown_array[x][y] = array[x][y];
                 }
                 cout << endl;
             }
         }
+
+        void updateScreen(Console& console)
+        {             
+            for(int y = 0; y < screenH; y++)
+            {
+                for(int x = 0; x < screenW; x++)
+                {
+                    if (shown_array[x][y] != array[x][y])
+                    {
+                        console.setCursorPosition(x, y);                        
+                        console.setColor(getColor(array[x][y]));
+
+                        cout << array[x][y] << flush;
+                        shown_array[x][y] = array[x][y];
+                    }
+                }
+            }
+        }
+    
+    private:
+        char shown_array[screenW][screenH];
+    
 };
 
 
@@ -52,41 +191,93 @@ class PlayerClass
     public:
         void spawnPlayer();
         void movePlayer();
+
+        int x, y;
+        bool isAlive;
         
-        void spawnPlayer(char screen[screenW][screenH])
+        void spawnPlayer(MapClass& map)
         {
-            int x = (rand() % screenW - 2) + 1;
-            int y = (rand() % screenH - 2) + 1;
-        
-            screen[x][y] = '-';
+            isAlive = true;
+            int tempX, tempY;
+            do
+            {
+                tempX = (rand() % screenW - 2) + 1;
+                tempY = (rand() % screenH - 2) + 1;
+            } while (map.getArray(tempX, tempY) != airChar);
+
+            x = tempX;
+            y = tempY;
+
+            map.modifyArray(x, y, playerHeadChar);
         }
 
 
-        void movePlayer(char screen[screenW][screenH])
+        void movePlayer(MapClass& map)
         {
-            //Create player class and put all funcs in there, then define playerPos and make functions to read and write
-            cout << "moving player\n";
+            map.modifyArray(x, y, airChar);
+
+            char nextChar;
+            nextChar = map.getArray(x + 1, y);
+            switch(nextChar)
+            { 
+                case airChar:
+                    x++;
+                    map.modifyArray(x, y, playerHeadChar);
+                    break;
+
+                case wallChar:
+                case playerHeadChar:
+                case playerBodyChar:
+                    isAlive = false;
+                    break;
+            }    
         }
+    
+    private:
 };
 
+
+void setup(Console& console, MapClass& map, PlayerClass& player)
+{
+    console.setFullscreen();
+    console.ShowConsoleCursor(false);
+
+    map.initMap();
+    player.spawnPlayer(map);
+    map.drawScreen(console);
+
+}
+
+//TO DO: Center game screen, add text, add apple. Get ideas for new game. FIX COMMENTING ON MY VSCODE
 int main()
 {
+    ShowWindow(GetConsoleWindow(), SW_HIDE);
     srand(time(NULL));
 
-    cout << "Starting program\n";
-    char screen[screenW][screenH];
-    bool playing = true;
-    MapClass mapClass;
-    PlayerClass playerClass;
+    //cout << "Starting program\n";
+    Sleep(1000);
 
-    mapClass.initMap(screen);
-    playerClass.spawnPlayer(screen);
-    while(playing)
+    MapClass map;
+    PlayerClass player;
+    Console console;
+
+    setup(console, map, player);
+
+    while(player.isAlive)
     {
-        playerClass.movePlayer(screen);
-        mapClass.drawScreen(screen);
-        sleep(250);
+        player.movePlayer(map);
+        map.updateScreen(console);
+
+
+        Sleep(33);
     }
-    cout << "Finished tasks\n";
+
+    console.setCursorPosition(screenW + 5, screenH / 2);
+    cout << "Player is dead" << endl;
+    Sleep(5000);
+
+    console.setCursorPosition(0, screenH + 2);
+    system("pause");
+
     return 0;
 }
