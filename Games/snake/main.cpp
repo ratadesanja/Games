@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include<Windows.h>
+#include <Windows.h>
+#include <thread>
+#include <chrono>
 
 using namespace std;
 
@@ -17,6 +19,9 @@ const char playerBodyChar = 'o';
 const char wallChar = '#';
 const char appleChar = 'x';
 const char airChar = ' ';
+//const char noneChar = '⠀';
+
+enum Direction {left = 0, right = 1, up = 2, down = 3};
 
 
 class Console
@@ -41,6 +46,16 @@ class Console
             Position.X = x;
             Position.Y = y;
             SetConsoleCursorPosition(handle, Position);
+        }
+
+        COORD getCursorPosition()
+        {
+            CONSOLE_SCREEN_BUFFER_INFO screenBufferInfo; 
+            GetConsoleScreenBufferInfo(handle, &screenBufferInfo);
+
+            COORD Position = screenBufferInfo.dwCursorPosition;
+            return Position;
+
         }
 
         void setColor(int color)
@@ -85,6 +100,60 @@ class Console
 };
 
 
+class Keyboard
+{
+    public:
+        void getKeys()
+        {
+
+            if(GetAsyncKeyState(0x41) & 0x01)
+            {
+                leftKey = true;
+                last_pressed = Direction::left;
+            }
+            else
+                leftKey = false;
+            
+            if(GetAsyncKeyState(0x44) & 0x01)
+            {
+                rightKey = true;
+                last_pressed = Direction::right;
+            }
+            else
+                rightKey = false;
+
+            if(GetAsyncKeyState(0x57) & 0x01)
+            {
+                upKey = true;
+                last_pressed = Direction::up;
+            }
+            else
+                upKey = false;
+
+            if(GetAsyncKeyState(0x53) & 0x01)
+            {
+                downKey = true;
+                last_pressed = Direction::down;
+            }
+            else
+                downKey = false;
+        }
+
+        Direction get_last_pressed()
+        {
+            return last_pressed;
+        }
+    
+    private:    
+        bool leftKey;
+        bool rightKey;
+        bool upKey;
+        bool downKey;
+
+        Direction last_pressed = Direction::right;
+};
+
+
 class MapClass
 {
     public:
@@ -105,9 +174,7 @@ class MapClass
             switch (c)
             { 
                 case wallChar:
-                    return 0;
-                    break;
-
+                //case noneChar:
                 case airChar:
                     return 0;
                     break;
@@ -124,25 +191,26 @@ class MapClass
                     return 3;
                     break;
             }
+            return 5;
         }
 
         void initMap()
         {
             //cout << "InitMap\n";
             char c;
-            for(int i = 0; i < screenH; i++)
+            for(int y = 0; y < screenH; y++)
             {
-                for(int j = 0; j < screenW; j++)
+                for(int x = 0; x < screenW; x++)
                 {
-                    if(i == 0 || i == screenH - 1 || j == 0 || j == screenW - 1)
+                    if(y == 0 || y == screenH - 1 || x == 0 || x == screenW - 1)
                     {
                         c = wallChar;
-                        modifyArray(j, i, c);
+                        modifyArray(x, y, c);
                     }
                     else
                     {
                         c = airChar;
-                        modifyArray(j, i, c);
+                        modifyArray(x, y, c);
                     }
                 }
             }
@@ -191,9 +259,6 @@ class PlayerClass
     public:
         void spawnPlayer();
         void movePlayer();
-
-        int x, y;
-        bool isAlive;
         
         void spawnPlayer(MapClass& map)
         {
@@ -201,8 +266,8 @@ class PlayerClass
             int tempX, tempY;
             do
             {
-                tempX = (rand() % screenW - 2) + 1;
-                tempY = (rand() % screenH - 2) + 1;
+                tempX = (rand() % (screenW / 2) - 4) + screenW / 2 + 4;
+                tempY = (rand() % (screenH / 2) - 4) + screenH / 2 + 4;
             } while (map.getArray(tempX, tempY) != airChar);
 
             x = tempX;
@@ -212,16 +277,41 @@ class PlayerClass
         }
 
 
-        void movePlayer(MapClass& map)
+        void movePlayer(MapClass& map, Keyboard& keyboard)
         {
             map.modifyArray(x, y, airChar);
 
+            int newX = x;
+            int newY = y;
+
+            switch (keyboard.get_last_pressed())
+            {
+                case Direction::left:
+                    newX -= 1;
+                    break;
+
+                case Direction::right:
+                    newX += 1;
+                    break;
+                    
+                case Direction::up:
+                    newY -= 1;
+                    break;
+                    
+                case Direction::down:
+                    newY += 1;
+                    break;
+
+            }
+
             char nextChar;
-            nextChar = map.getArray(x + 1, y);
+            nextChar = map.getArray(newX, newY);
+
             switch(nextChar)
             { 
                 case airChar:
-                    x++;
+                    x = newX;
+                    y = newY;
                     map.modifyArray(x, y, playerHeadChar);
                     break;
 
@@ -230,10 +320,18 @@ class PlayerClass
                 case playerBodyChar:
                     isAlive = false;
                     break;
-            }    
+            }
+
+        }
+
+        bool getAlive()
+        {
+            return isAlive;
         }
     
     private:
+        int x, y;
+        bool isAlive;
 };
 
 
@@ -248,6 +346,20 @@ void setup(Console& console, MapClass& map, PlayerClass& player)
 
 }
 
+
+void keyboardThread(Keyboard& keyboard, Console& console, PlayerClass& player)
+{
+    //using namespace std::literals::chrono_literals;
+
+    while(player.getAlive())
+    {
+        keyboard.getKeys();
+        
+        this_thread::sleep_for(67ms);
+    }
+}
+
+
 //TO DO: Center game screen, add text, add apple. Get ideas for new game. FIX COMMENTING ON MY VSCODE
 int main()
 {
@@ -257,24 +369,32 @@ int main()
     //cout << "Starting program\n";
     Sleep(1000);
 
+    Console console;
+    Keyboard keyboard;
     MapClass map;
     PlayerClass player;
-    Console console;
+
 
     setup(console, map, player);
+    thread keyboardWorker(keyboardThread, ref(keyboard), ref(console), ref(player));
 
-    while(player.isAlive)
+    while(player.getAlive())
     {
-        player.movePlayer(map);
+        player.movePlayer(map, keyboard);
         map.updateScreen(console);
 
-
-        Sleep(33);
+        console.setColor(0);
+        console.setCursorPosition(screenW + 5, 0);
+        cout << keyboard.get_last_pressed();
+        
+        Sleep(1000/10);
     }
 
     console.setCursorPosition(screenW + 5, screenH / 2);
     cout << "Player is dead" << endl;
     Sleep(5000);
+
+    keyboardWorker.join();
 
     console.setCursorPosition(0, screenH + 2);
     system("pause");
